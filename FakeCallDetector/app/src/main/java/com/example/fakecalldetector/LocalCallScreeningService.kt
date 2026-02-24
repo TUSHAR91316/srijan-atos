@@ -6,11 +6,17 @@ import android.telecom.Call
 import android.telecom.CallScreeningService
 import android.util.Log
 import androidx.annotation.RequiresApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @RequiresApi(Build.VERSION_CODES.N)
 class LocalCallScreeningService : CallScreeningService() {
 
     private val TAG = "LocalCallScreener"
+    private val voiceAnalyzer = LocalTFLiteVoiceAnalyzer()
+    private val scope = CoroutineScope(Dispatchers.Main)
 
     override fun onScreenCall(callDetails: Call.Details) {
         val phoneNumber = callDetails.handle?.schemeSpecificPart ?: ""
@@ -20,24 +26,33 @@ class LocalCallScreeningService : CallScreeningService() {
         val isKnownContact = isNumberInContacts(applicationContext, phoneNumber)
 
         // 2. Perform Heuristic Analysis (Spoofing checks)
-        val isSpoofed = verifyMetadataLocally(phoneNumber, isKnownContact)
+        val isMetadataSpoofed = verifyMetadataLocally(phoneNumber, isKnownContact)
 
-        val response = CallResponse.Builder()
+        // 3. Perform Mock On-Device ML Audio Liveness Detection
+        // Because grabbing audio takes time, we run this asynchronously and then respond
+        scope.launch {
+            val isDeepfake = withContext(Dispatchers.IO) {
+                // In reality, this would hook into AudioRecord. We mock it for the presentation.
+                voiceAnalyzer.analyzeAudioLiveness()
+            }
+
+            val response = CallResponse.Builder()
         
-        if (isSpoofed) {
-            Log.e(TAG, "FLAGGED: Call from \$phoneNumber appears to be SPOOFED/FAKE.")
-            
-            // Block the call automatically OR silence it
-            response.setDisallowCall(true)
-                .setRejectCall(true)
-                .setSkipCallLog(false)
-                .setSkipNotification(false) // Let the user know we blocked a fake call
-        } else {
-            Log.d(TAG, "Call allowed.")
-        }
+            if (isMetadataSpoofed || isDeepfake) {
+                Log.e(TAG, "FLAGGED: Call from \$phoneNumber blocked! Metadata Spoofed = \$isMetadataSpoofed, Deepfake = \$isDeepfake")
+                
+                // Block the call automatically OR silence it
+                response.setDisallowCall(true)
+                    .setRejectCall(true)
+                    .setSkipCallLog(false)
+                    .setSkipNotification(false) // Let the user know we blocked a fake call
+            } else {
+                Log.d(TAG, "Call allowed.")
+            }
 
-        // Must respond to the system
-        respondToCall(callDetails, response.build())
+            // Must respond to the system
+            respondToCall(callDetails, response.build())
+        }
     }
 
     private fun isNumberInContacts(context: Context, number: String): Boolean {
