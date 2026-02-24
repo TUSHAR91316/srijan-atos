@@ -33,4 +33,4 @@ The primary guardrail of this project is absolute privacy: **No call data, audio
 2.  Click **Enable Local Screening**.
 3.  The OS will prompt you to set "Fake Call Defender" as your default Caller ID & Spam App. **Accept this prompt**.
 4.  Once enabled, use another phone (or an emulator control panel) to place a call mimicking a spoofed number (e.g., using international prefixes like `+44` for testing the dummy heuristic).
-5.  The app will instantly block the call or flag it via the local Android Logcat logs without ever connecting to the internet.
+5.  The app will instantly block the call or flag it via the local Android Logcat logs without ever connecting to the internet
