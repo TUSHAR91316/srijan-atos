@@ -1,0 +1,13 @@
+# Replace @your-github-username with the actual repository owner/maintainer username.
+
+# Default owner for all files
+* @your-github-username
+
+# CI and governance files require owner review
+.github/workflows/* @your-github-username
+.github/CODEOWNERS @your-github-username
+.github/SECURITY.md @your-github-username
+
+# App code ownership
+fake_call_detector/lib/** @your-github-username
+fake_call_detector/android/** @your-github-username

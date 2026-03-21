@@ -3,6 +3,9 @@ name: PR Checks
 on:
   pull_request:
     branches: ["main", "master", "develop"]
+    paths:
+      - "fake_call_detector/**"
+      - ".github/workflows/pr-checks.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,19 +19,21 @@ jobs:
   flutter-quality:
     name: Flutter Analyze and Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: fake_call_detector
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@0ca7a949e71ae44c8e688a51c5e7e93b2c87e295
         with:
           channel: stable
           cache: true
+          cache-dependency-path: fake_call_detector/pubspec.lock
 
       - name: Install dependencies
         run: flutter pub get
@@ -39,5 +44,11 @@ jobs:
       - name: Run static analysis
         run: flutter analyze
 
-      - name: Run tests
-        run: flutter test
+      - name: Run tests with coverage
+        run: flutter test --coverage
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flutter-coverage-lcov
+          path: fake_call_detector/coverage/lcov.info
