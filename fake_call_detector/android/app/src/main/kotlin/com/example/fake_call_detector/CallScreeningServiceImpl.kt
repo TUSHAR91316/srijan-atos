@@ -12,7 +12,14 @@ class CallScreeningServiceImpl : CallScreeningService() {
 
     override fun onScreenCall(callDetails: Call.Details) {
         val phoneNumber = callDetails.handle?.schemeSpecificPart
-        Log.d(TAG, "Incoming call from: $phoneNumber")
+        if (BuildConfig.DEBUG) {
+            val maskedNumber = if (phoneNumber.isNullOrBlank()) {
+                "Unknown"
+            } else {
+                phoneNumber.takeLast(2).padStart(phoneNumber.length, '*')
+            }
+            Log.d(TAG, "Incoming call from: $maskedNumber")
+        }
         incomingCallPhoneNumber = phoneNumber
 
         // Pass this event to Flutter or Native Audio service to kick off

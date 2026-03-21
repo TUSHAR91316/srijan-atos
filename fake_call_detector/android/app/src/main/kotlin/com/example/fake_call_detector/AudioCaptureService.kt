@@ -22,7 +22,11 @@ class AudioCaptureService(private val context: Context) {
         AudioFormat.ENCODING_PCM_16BIT
     )
 
-    fun startCapture() {
+    fun startCapture(): Boolean {
+        if (isRecording) {
+            return true
+        }
+
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         
         // Emulate the workaround: Force speakerphone on so the MIC can pick up the remote caller's voice
@@ -53,8 +57,11 @@ class AudioCaptureService(private val context: Context) {
                     }
                 }
             }
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing AudioRecord: ${e.message}")
+            isRecording = false
+            return false
         }
     }
 
