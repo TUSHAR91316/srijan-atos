@@ -161,10 +161,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _threatColor.withOpacity(0.35), width: 1.5),
+        border: Border.all(
+          color: _threatColor.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: _threatColor.withOpacity(0.15),
+            color: _threatColor.withValues(alpha: 0.15),
             blurRadius: 24,
             spreadRadius: 2,
           ),
@@ -176,7 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             scale: _pulseAnimation,
             child: CircleAvatar(
               radius: 42,
-              backgroundColor: _threatColor.withOpacity(0.12),
+              backgroundColor: _threatColor.withValues(alpha: 0.12),
               child: Icon(_threatIcon, color: _threatColor, size: 44),
             ),
           ),
@@ -211,7 +214,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _warnAmber.withOpacity(0.3)),
+        border: Border.all(color: _warnAmber.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -251,7 +254,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: _isAudioCapturing
-              ? _dangerRed.withOpacity(0.4)
+              ? _dangerRed.withValues(alpha: 0.4)
               : Colors.white12,
         ),
       ),
@@ -296,7 +299,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               boxShadow: _isAudioCapturing
                   ? [
                       BoxShadow(
-                        color: _dangerRed.withOpacity(0.6),
+                        color: _dangerRed.withValues(alpha: 0.6),
                         blurRadius: 6,
                       ),
                     ]
