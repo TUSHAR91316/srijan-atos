@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../models/call_event.dart';
 
 class NativeBridge {
   NativeBridge._(); // prevent instantiation
@@ -12,16 +13,18 @@ class NativeBridge {
   );
 
   /// Broadcast stream of incoming call events from the native layer.
-  static Stream<dynamic> get callEventsStream =>
-      _eventChannel.receiveBroadcastStream();
+  static Stream<CallEvent> get callEventsStream => _eventChannel
+      .receiveBroadcastStream()
+      .where((event) => event is Map)
+      .map((event) => CallEvent.fromMap(event as Map<dynamic, dynamic>));
 
   static Future<bool> startAudioCapture() async {
     try {
       final bool result =
           await _methodChannel.invokeMethod<bool>('startAudioCapture') ?? false;
       return result;
-    } on PlatformException catch (e) {
-      debugPrint('startAudioCapture error: ${e.message}');
+    } catch (e) {
+      debugPrint('startAudioCapture error: $e');
       return false;
     }
   }
@@ -31,9 +34,21 @@ class NativeBridge {
       final bool result =
           await _methodChannel.invokeMethod<bool>('stopAudioCapture') ?? false;
       return result;
-    } on PlatformException catch (e) {
-      debugPrint('stopAudioCapture error: ${e.message}');
+    } catch (e) {
+      debugPrint('stopAudioCapture error: $e');
       return false;
+    }
+  }
+
+  static Future<List<String>> getTrustedNumbers() async {
+    try {
+      final List<dynamic>? result = await _methodChannel
+          .invokeMethod<List<dynamic>>('getTrustedNumbers');
+      if (result == null) return const <String>[];
+      return result.map((e) => e.toString()).toList(growable: false);
+    } catch (e) {
+      debugPrint('getTrustedNumbers error: $e');
+      return const <String>[];
     }
   }
 }

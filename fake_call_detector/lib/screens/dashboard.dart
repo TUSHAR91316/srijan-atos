@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../models/call_event.dart';
 import '../services/native_bridge.dart';
+import '../services/threat_scoring_service.dart';
 
 enum ThreatLevel { safe, warning, danger }
 
@@ -15,9 +17,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   String _latestEvent = 'Monitoring for incoming calls…';
   String _callerNumber = '';
+  String _latestReason = '';
+  int _trustedContactCount = 0;
   bool _isAudioCapturing = false;
   ThreatLevel _threatLevel = ThreatLevel.safe;
-  StreamSubscription<dynamic>? _callEventSubscription;
+  ThreatScoringService _threatScoringService = const ThreatScoringService();
+  StreamSubscription<CallEvent>? _callEventSubscription;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -39,7 +44,23 @@ class _DashboardScreenState extends State<DashboardScreen>
     _pulseAnimation = Tween<double>(begin: 0.9, end: 1.05).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    _loadTrustedNumbers();
     _listenToCallEvents();
+  }
+
+  Future<void> _loadTrustedNumbers() async {
+    final trustedNumbers = await NativeBridge.getTrustedNumbers();
+    if (!mounted) return;
+
+    setState(() {
+      _trustedContactCount = trustedNumbers.length;
+      _threatScoringService = ThreatScoringService(
+        trustedNumbers: trustedNumbers,
+      );
+      if (trustedNumbers.isEmpty) {
+        _latestReason = 'Grant Contacts permission to improve spoof detection.';
+      }
+    });
   }
 
   @override
@@ -52,17 +73,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _listenToCallEvents() {
     _callEventSubscription = NativeBridge.callEventsStream.listen(
       (event) {
-        if (event is Map) {
-          final phoneNumber = event['phoneNumber'] as String? ?? 'Unknown';
-          final eventName = event['event'] as String? ?? 'incoming_call';
-          if (!mounted) return;
-          setState(() {
-            _callerNumber = phoneNumber;
-            _latestEvent = 'Incoming call detected ($eventName)';
-            _threatLevel = ThreatLevel.warning; // escalate after ML analysis
-          });
-          _toggleAudioCapture(true);
-        }
+        final risk = _threatScoringService.scoreIncomingCall(event);
+        if (!mounted) return;
+        setState(() {
+          _callerNumber = event.phoneNumber;
+          _latestEvent = 'Incoming call detected (${event.eventName})';
+          _latestReason = risk.reasons.first;
+          _threatLevel = _scoreToThreatLevel(risk.score);
+        });
+        _toggleAudioCapture(true);
       },
       onError: (dynamic error) {
         if (!mounted) return;
@@ -85,10 +104,17 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (!start) {
           _threatLevel = ThreatLevel.safe;
           _callerNumber = '';
+          _latestReason = '';
           _latestEvent = 'Monitoring for incoming calls…';
         }
       });
     }
+  }
+
+  ThreatLevel _scoreToThreatLevel(int score) {
+    if (score >= 60) return ThreatLevel.danger;
+    if (score >= 30) return ThreatLevel.warning;
+    return ThreatLevel.safe;
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -138,6 +164,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               if (_callerNumber.isNotEmpty) _buildCallerCard(),
               if (_callerNumber.isNotEmpty) const SizedBox(height: 20),
               _buildAudioStatusCard(),
+              const SizedBox(height: 12),
+              _buildTrustedContactsCard(),
               const Spacer(),
               _buildCaptureButton(),
               const SizedBox(height: 8),
@@ -203,6 +231,14 @@ class _DashboardScreenState extends State<DashboardScreen>
               height: 1.4,
             ),
           ),
+          if (_latestReason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              _latestReason,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Colors.white38),
+            ),
+          ],
         ],
       ),
     );
@@ -305,6 +341,35 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ]
                   : [],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrustedContactsCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.contacts_rounded, color: Colors.white70, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _trustedContactCount > 0
+                  ? 'Trusted contacts loaded: $_trustedContactCount'
+                  : 'No trusted contacts loaded',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+          TextButton(
+            onPressed: _loadTrustedNumbers,
+            child: const Text('Refresh'),
           ),
         ],
       ),

@@ -2,6 +2,7 @@ package com.example.fake_call_detector
 
 import android.Manifest
 import android.app.role.RoleManager
+import android.provider.ContactsContract
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
@@ -56,6 +57,40 @@ class MainActivity : FlutterActivity() {
         return true
     }
 
+    private fun getTrustedNumbers(): List<String> {
+        val hasContactsPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasContactsPermission) {
+            Log.w(TAG, "Trusted contact load skipped: READ_CONTACTS permission not granted.")
+            return emptyList()
+        }
+
+        val uniqueNumbers = linkedSetOf<String>()
+        val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER)
+
+        contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            projection,
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            while (cursor.moveToNext()) {
+                val rawNumber = cursor.getString(numberIndex) ?: continue
+                val normalized = rawNumber.replace(Regex("[^0-9+]"), "")
+                if (normalized.length >= 10) {
+                    uniqueNumbers.add(normalized)
+                }
+            }
+        }
+
+        return uniqueNumbers.take(1000)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         instance = this
@@ -85,6 +120,9 @@ class MainActivity : FlutterActivity() {
                 "stopAudioCapture" -> {
                     audioCaptureService?.stopCapture()
                     result.success(true)
+                }
+                "getTrustedNumbers" -> {
+                    result.success(getTrustedNumbers())
                 }
                 else -> result.notImplemented()
             }
