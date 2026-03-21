@@ -36,11 +36,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
-    _pulseAnimation =
-        Tween<double>(begin: 0.9, end: 1.05).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _pulseAnimation = Tween<double>(begin: 0.9, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
     _listenToCallEvents();
   }
 
@@ -77,8 +75,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _toggleAudioCapture(bool start) async {
-    final success =
-        start ? await NativeBridge.startAudioCapture() : await NativeBridge.stopAudioCapture();
+    final success = start
+        ? await NativeBridge.startAudioCapture()
+        : await NativeBridge.stopAudioCapture();
     if (!mounted) return;
     if (success) {
       setState(() {
@@ -95,22 +94,22 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   Color get _threatColor => switch (_threatLevel) {
-        ThreatLevel.safe => _safeGreen,
-        ThreatLevel.warning => _warnAmber,
-        ThreatLevel.danger => _dangerRed,
-      };
+    ThreatLevel.safe => _safeGreen,
+    ThreatLevel.warning => _warnAmber,
+    ThreatLevel.danger => _dangerRed,
+  };
 
   String get _threatLabel => switch (_threatLevel) {
-        ThreatLevel.safe => 'PROTECTED',
-        ThreatLevel.warning => 'ANALYSING…',
-        ThreatLevel.danger => 'THREAT DETECTED',
-      };
+    ThreatLevel.safe => 'PROTECTED',
+    ThreatLevel.warning => 'ANALYSING…',
+    ThreatLevel.danger => 'THREAT DETECTED',
+  };
 
   IconData get _threatIcon => switch (_threatLevel) {
-        ThreatLevel.safe => Icons.verified_user_rounded,
-        ThreatLevel.warning => Icons.policy_rounded,
-        ThreatLevel.danger => Icons.gpp_bad_rounded,
-      };
+    ThreatLevel.safe => Icons.verified_user_rounded,
+    ThreatLevel.warning => Icons.policy_rounded,
+    ThreatLevel.danger => Icons.gpp_bad_rounded,
+  };
 
   // ── Build ────────────────────────────────────────────────────────────────────
 
@@ -168,7 +167,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             color: _threatColor.withOpacity(0.15),
             blurRadius: 24,
             spreadRadius: 2,
-          )
+          ),
         ],
       ),
       child: Column(
@@ -224,14 +223,17 @@ class _DashboardScreenState extends State<DashboardScreen>
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Incoming from',
-                  style: TextStyle(fontSize: 12, color: Colors.white38)),
+              const Text(
+                'Incoming from',
+                style: TextStyle(fontSize: 12, color: Colors.white38),
+              ),
               Text(
                 _callerNumber,
                 style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             ],
           ),
@@ -266,7 +268,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isAudioCapturing ? 'Audio Analysis Active' : 'Audio Analysis Idle',
+                  _isAudioCapturing
+                      ? 'Audio Analysis Active'
+                      : 'Audio Analysis Idle',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -290,7 +294,12 @@ class _DashboardScreenState extends State<DashboardScreen>
               shape: BoxShape.circle,
               color: _isAudioCapturing ? _dangerRed : Colors.white24,
               boxShadow: _isAudioCapturing
-                  ? [BoxShadow(color: _dangerRed.withOpacity(0.6), blurRadius: 6)]
+                  ? [
+                      BoxShadow(
+                        color: _dangerRed.withOpacity(0.6),
+                        blurRadius: 6,
+                      ),
+                    ]
                   : [],
             ),
           ),
@@ -303,9 +312,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     return ElevatedButton.icon(
       onPressed: () => _toggleAudioCapture(!_isAudioCapturing),
       icon: Icon(
-        _isAudioCapturing ? Icons.stop_circle_rounded : Icons.play_circle_rounded,
+        _isAudioCapturing
+            ? Icons.stop_circle_rounded
+            : Icons.play_circle_rounded,
       ),
-      label: Text(_isAudioCapturing ? 'Stop Manual Capture' : 'Start Manual Capture'),
+      label: Text(
+        _isAudioCapturing ? 'Stop Manual Capture' : 'Start Manual Capture',
+      ),
       style: ElevatedButton.styleFrom(
         backgroundColor: _isAudioCapturing ? _dangerRed : _accentPurple,
         foregroundColor: Colors.white,

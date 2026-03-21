@@ -1,30 +1,65 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fake_call_detector/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  const MethodChannel methodChannel = MethodChannel(
+    'com.example.fake_call_detector/methods',
+  );
+  const MethodChannel eventChannelControl = MethodChannel(
+    'com.example.fake_call_detector/events',
+  );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, (MethodCall call) async {
+          if (call.method == 'startAudioCapture') return true;
+          if (call.method == 'stopAudioCapture') return true;
+          return null;
+        });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(eventChannelControl, (MethodCall call) async {
+          if (call.method == 'listen' || call.method == 'cancel') return null;
+          return null;
+        });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(eventChannelControl, null);
+  });
+
+  testWidgets('shows initial monitoring state', (WidgetTester tester) async {
+    await tester.pumpWidget(const FakeCallDetectorApp());
+
+    expect(find.text('Fake Call Detector'), findsOneWidget);
+    expect(find.text('PROTECTED'), findsOneWidget);
+    expect(find.text('Monitoring for incoming calls…'), findsOneWidget);
+    expect(find.text('Start Manual Capture'), findsOneWidget);
+  });
+
+  testWidgets('manual capture button toggles active and idle states', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const FakeCallDetectorApp());
+
+    await tester.tap(find.text('Start Manual Capture'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Stop Manual Capture'), findsOneWidget);
+    expect(find.text('Audio Analysis Active'), findsOneWidget);
+
+    await tester.tap(find.text('Stop Manual Capture'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Start Manual Capture'), findsOneWidget);
+    expect(find.text('Audio Analysis Idle'), findsOneWidget);
   });
 }
