@@ -1,4 +1,5 @@
 import '../models/call_event.dart';
+import 'database_service.dart';
 
 class ThreatScore {
   const ThreatScore({required this.score, required this.reasons});
@@ -8,15 +9,25 @@ class ThreatScore {
 }
 
 class ThreatScoringService {
-  const ThreatScoringService({this.trustedNumbers = const <String>[]});
+  ThreatScoringService({this.trustedNumbers = const <String>[]});
 
   final List<String> trustedNumbers;
+  final DatabaseService _dbService = DatabaseService();
 
-  ThreatScore scoreIncomingCall(CallEvent event) {
+  Future<ThreatScore> scoreIncomingCall(CallEvent event) async {
     var score = 0;
     final reasons = <String>[];
     final normalized = _normalizePhone(event.phoneNumber);
     final digitsOnly = _digitsOnly(normalized);
+
+    // 1. Check if the number is manually blocked (Local Sync)
+    final isBlocked = await _dbService.isNumberBlocked(digitsOnly);
+    if (isBlocked) {
+      return const ThreatScore(
+        score: 100,
+        reasons: ['Number manually flagged as scam in your history'],
+      );
+    }
 
     if (event.isUnknownNumber) {
       score += 40;
@@ -47,8 +58,8 @@ class ThreatScoringService {
           (trusted) => _isNearDigitMatch(digitsOnly, trusted),
         );
         if (nearMatch) {
-          score += 35;
-          reasons.add('Near-match to trusted contact (possible spoof)');
+          score += 45;
+          reasons.add('Near-match to trusted contact (High spoof risk)');
         }
       }
     }
