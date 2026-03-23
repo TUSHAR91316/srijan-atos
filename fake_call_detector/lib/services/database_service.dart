@@ -21,7 +21,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute('ALTER TABLE call_logs ADD COLUMN is_scam INTEGER DEFAULT 0');
@@ -30,6 +30,15 @@ class DatabaseService {
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               phone_number TEXT UNIQUE,
               reason TEXT
+            )
+          ''');
+        }
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE users (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              email TEXT UNIQUE,
+              password TEXT
             )
           ''');
         }
@@ -59,10 +68,37 @@ class DatabaseService {
             reason TEXT
           )
         ''');
+        await db.execute('''
+          CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE,
+            password TEXT
+          )
+        ''');
       },
     );
   }
 
+  // --- User Auth Methods ---
+  Future<int> registerUser(String email, String password) async {
+    final db = await database;
+    return await db.insert('users', {
+      'email': email,
+      'password': password,
+    });
+  }
+
+  Future<Map<String, dynamic>?> getUser(String email) async {
+    final db = await database;
+    final results = await db.query(
+      'users',
+      where: 'email = ?',
+      whereArgs: [email],
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  // --- Existing Methods ---
   Future<int> insertCallLog(CallEvent event, int score, List<String> reasons) async {
     final db = await database;
     return await db.insert('call_logs', {

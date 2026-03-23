@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/call_event.dart';
 import '../services/native_bridge.dart';
 import '../services/threat_scoring_service.dart';
-import '../services/database_service.dart';
-import 'history_screen.dart';
 
 enum ThreatLevel { safe, warning, danger }
 
@@ -23,8 +21,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   int _trustedContactCount = 0;
   bool _isAudioCapturing = false;
   ThreatLevel _threatLevel = ThreatLevel.safe;
-  ThreatScoringService _threatScoringService = ThreatScoringService();
-  final DatabaseService _dbService = DatabaseService();
+  ThreatScoringService _threatScoringService = const ThreatScoringService();
   StreamSubscription<CallEvent>? _callEventSubscription;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -53,17 +50,14 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _loadTrustedNumbers() async {
     final trustedNumbers = await NativeBridge.getTrustedNumbers();
-    final localTrusted = await _dbService.getLocalTrustedNumbers();
-    final allTrusted = {...trustedNumbers, ...localTrusted}.toList();
-
     if (!mounted) return;
 
     setState(() {
-      _trustedContactCount = allTrusted.length;
+      _trustedContactCount = trustedNumbers.length;
       _threatScoringService = ThreatScoringService(
-        trustedNumbers: allTrusted,
+        trustedNumbers: trustedNumbers,
       );
-      if (allTrusted.isEmpty) {
+      if (trustedNumbers.isEmpty) {
         _latestReason = 'Grant Contacts permission to improve spoof detection.';
       }
     });
@@ -71,22 +65,19 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
-    _callEventSubscription?.cancel();
+    _callEventSubscription?.cancel(); // ← fix stream subscription leak
     _pulseController.dispose();
     super.dispose();
   }
 
   void _listenToCallEvents() {
     _callEventSubscription = NativeBridge.callEventsStream.listen(
-      (event) async {
-        final risk = await _threatScoringService.scoreIncomingCall(event);
-        
-        await _dbService.insertCallLog(event, risk.score, risk.reasons);
-
+      (event) {
+        final risk = _threatScoringService.scoreIncomingCall(event);
         if (!mounted) return;
         setState(() {
           _callerNumber = event.phoneNumber;
-          _latestEvent = 'Incoming call detected (\${event.eventName})';
+          _latestEvent = 'Incoming call detected (${event.eventName})';
           _latestReason = risk.reasons.first;
           _threatLevel = _scoreToThreatLevel(risk.score);
         });
@@ -95,7 +86,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       onError: (dynamic error) {
         if (!mounted) return;
         setState(() {
-          _latestEvent = 'Monitoring error: \$error';
+          _latestEvent = 'Monitoring error: $error';
           _threatLevel = ThreatLevel.safe;
         });
       },
@@ -153,27 +144,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Scaffold(
       backgroundColor: _bgColor,
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.shield_rounded, color: _accentPurple, size: 22),
-            SizedBox(width: 8),
-            Text('Fake Call Detector'),
+            const Icon(Icons.shield_rounded, color: _accentPurple, size: 22),
+            const SizedBox(width: 8),
+            const Text('Fake Call Detector'),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history_rounded),
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HistoryScreen()),
-              );
-              _loadTrustedNumbers();
-            },
-            tooltip: 'Call History',
-          ),
-        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -339,9 +317,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ),
                 const SizedBox(height: 2),
-                const Text(
-                  'Speakerphone workaround engaged',
-                  style: TextStyle(fontSize: 12, color: Colors.white38),
+                Text(
+                  _isAudioCapturing
+                      ? 'Speakerphone workaround engaged'
+                      : 'Waiting for incoming call',
+                  style: const TextStyle(fontSize: 12, color: Colors.white38),
                 ),
               ],
             ),
@@ -351,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             height: 10,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _isAudioCapturing ? _dangerRed.withValues(alpha: 0.15) : Colors.white24,
+              color: _isAudioCapturing ? _dangerRed : Colors.white24,
               boxShadow: _isAudioCapturing
                   ? [
                       BoxShadow(
@@ -382,7 +362,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           Expanded(
             child: Text(
               _trustedContactCount > 0
-                  ? 'Trusted contacts loaded: \$_trustedContactCount'
+                  ? 'Trusted contacts loaded: $_trustedContactCount'
                   : 'No trusted contacts loaded',
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),

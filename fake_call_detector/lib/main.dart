@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/dashboard.dart';
+import 'screens/login_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,7 +55,7 @@ class FakeCallDetectorApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const DashboardScreen(),
+      home: const LoginScreen(),
     );
   }
 }
