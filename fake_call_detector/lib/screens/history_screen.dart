@@ -1,9 +1,7 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-
 import '../providers/service_providers.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -15,6 +13,17 @@ class HistoryScreen extends ConsumerStatefulWidget {
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   _HistoryFilter _filter = _HistoryFilter.all;
+  late Future<List<Map<String, dynamic>>> _logsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshLogs();
+  }
+
+  void _refreshLogs() {
+    _logsFuture = ref.read(historyRepositoryProvider).getCallLogs();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,12 +31,21 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       backgroundColor: const Color(0xFF0D0D1A),
       appBar: AppBar(
         title: const Text('Call History & Flags'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() => _refreshLogs()),
+          ),
+        ],
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(historyRepositoryProvider).getCallLogs(),
+        future: _logsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(
@@ -53,14 +71,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             padding: const EdgeInsets.all(16),
             itemBuilder: (context, index) {
               final log = logs[index];
-              final score = log['threat_score'] as int;
+              final score = (log['threat_score'] as int?) ?? 0;
               final isScam = log['is_scam'] == 1;
               final color = isScam ? const Color(0xFFFF1744) : _getScoreColor(score);
-              final DateTime timestamp = DateTime.parse(log['timestamp']);
+              final DateTime timestamp = DateTime.tryParse(log['timestamp'] ?? '') ?? DateTime.now();
               final String phoneNumber = (log['phone_number'] ?? 'Unknown').toString();
+              
               final probability = (log['risk_probability'] as num?)?.toDouble();
               final reasons = _parseReasons(log['risk_reasons_json'], log['reasons']);
-              final signals = _parseSignals(log['signal_breakdown_json']);
 
               return Card(
                 color: const Color(0xFF1A1A2E),
@@ -85,7 +103,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     ),
                   ),
                   subtitle: Text(
-                    'Timeline: ${DateFormat('MMM dd, hh:mm a').format(timestamp)}',
+                    DateFormat('MMM dd, hh:mm a').format(timestamp),
                     style: const TextStyle(color: Colors.white38, fontSize: 11),
                   ),
                   trailing: Text(
@@ -103,29 +121,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Reasons for Score:', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                          Text(reasons.join('\n• ').replaceFirst('', '• '), style: const TextStyle(color: Colors.white70)),
+                          ...reasons.map((r) => Text('• $r', style: const TextStyle(color: Colors.white70))),
                           if (probability != null) ...[
                             const SizedBox(height: 8),
                             Text(
-                              'Model probability: ${(probability * 100).toStringAsFixed(1)}%',
-                              style: const TextStyle(color: Colors.white54, fontSize: 12),
-                            ),
-                          ],
-                          if (signals.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: signals.entries
-                                  .where((entry) => entry.value >= 0.4)
-                                  .map(
-                                    (entry) => Chip(
-                                      backgroundColor: color.withValues(alpha: 0.15),
-                                      labelStyle: const TextStyle(color: Colors.white70, fontSize: 11),
-                                      label: Text('${entry.key}: ${(entry.value * 100).toStringAsFixed(0)}%'),
-                                    ),
-                                  )
-                                  .toList(growable: false),
+                              'Probability: ${(probability * 100).toStringAsFixed(1)}%',
+                              style: const TextStyle(color: Colors.white54, fontSize: 11),
                             ),
                           ],
                           const Divider(color: Colors.white12),
@@ -141,13 +142,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                   if (!isScam) {
                                     await ref.read(historyRepositoryProvider).blockNumber(phoneNumber, 'User flagged as scam');
                                   }
-                                  if (!mounted) return;
-                                  setState(() {});
+                                  setState(() => _refreshLogs());
                                 },
                               ),
                               TextButton.icon(
                                 icon: const Icon(Icons.verified_rounded, size: 18, color: Color(0xFF00E676)),
-                                label: const Text('Trust Number'),
+                                label: const Text('Trust'),
                                 style: TextButton.styleFrom(foregroundColor: const Color(0xFF00E676)),
                                 onPressed: () async {
                                   final messenger = ScaffoldMessenger.of(context);
@@ -184,15 +184,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             .map(
               (filter) => ChoiceChip(
                 selectedColor: const Color(0xFF6C3BF5),
-                labelStyle: TextStyle(
-                  color: _filter == filter ? Colors.white : Colors.white70,
-                ),
-                label: Text(filter.label),
+                label: Text(filter.label, style: const TextStyle(fontSize: 12)),
                 selected: _filter == filter,
                 onSelected: (_) => setState(() => _filter = filter),
               ),
             )
-            .toList(growable: false),
+            .toList(),
       ),
     );
   }
@@ -204,49 +201,23 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final number = (log['phone_number'] ?? '').toString();
 
       switch (_filter) {
-        case _HistoryFilter.all:
-          return true;
-        case _HistoryFilter.flagged:
-          return isScam || score >= 60;
-        case _HistoryFilter.trusted:
-          return score <= 20;
-        case _HistoryFilter.unknown:
-          return number.trim().isEmpty || number.toLowerCase() == 'unknown';
+        case _HistoryFilter.all: return true;
+        case _HistoryFilter.flagged: return isScam || score >= 60;
+        case _HistoryFilter.trusted: return score <= 20 && !isScam;
+        case _HistoryFilter.unknown: return number.toLowerCase().contains('unknown') || number.isEmpty;
       }
-    }).toList(growable: false);
+    }).toList();
   }
 
   List<String> _parseReasons(dynamic riskReasonsJson, dynamic fallbackReasons) {
-    if (riskReasonsJson is String && riskReasonsJson.trim().isNotEmpty) {
+    if (riskReasonsJson is String && riskReasonsJson.isNotEmpty) {
       try {
         final decoded = jsonDecode(riskReasonsJson);
-        if (decoded is List) {
-          return decoded.map((e) => e.toString()).toList(growable: false);
-        }
-      } catch (_) {
-        return <String>[riskReasonsJson];
-      }
+        if (decoded is List) return decoded.map((e) => e.toString()).toList();
+      } catch (_) {}
     }
-
-    final fallback = fallbackReasons?.toString() ?? 'No details available';
-    return fallback.split(', ').where((e) => e.trim().isNotEmpty).toList(growable: false);
-  }
-
-  Map<String, double> _parseSignals(dynamic signalJson) {
-    if (signalJson is! String || signalJson.trim().isEmpty) {
-      return const <String, double>{};
-    }
-
-    try {
-      final decoded = jsonDecode(signalJson);
-      if (decoded is! Map) return const <String, double>{};
-      return decoded.map((key, value) {
-        final parsed = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
-        return MapEntry(key.toString(), parsed);
-      });
-    } catch (_) {
-      return const <String, double>{};
-    }
+    final fallback = fallbackReasons?.toString() ?? 'No details';
+    return fallback.split(', ').where((s) => s.isNotEmpty).toList();
   }
 
   Color _getScoreColor(int score) {
@@ -259,10 +230,5 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 enum _HistoryFilter { all, flagged, trusted, unknown }
 
 extension on _HistoryFilter {
-  String get label => switch (this) {
-        _HistoryFilter.all => 'All',
-        _HistoryFilter.flagged => 'Flagged',
-        _HistoryFilter.trusted => 'Trusted',
-        _HistoryFilter.unknown => 'Unknown',
-      };
+  String get label => name[0].toUpperCase() + name.substring(1);
 }

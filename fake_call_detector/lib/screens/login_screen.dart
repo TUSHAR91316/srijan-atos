@@ -88,6 +88,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  void _skipToDashboard() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const DashboardScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -163,12 +170,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       : Text(_isLogin ? 'Login' : 'Sign Up'),
                 ),
                 const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () => setState(() => _isLogin = !_isLogin),
-                  child: Text(
-                    _isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Login',
-                    style: const TextStyle(color: Color(0xFF6C3BF5)),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(
+                      onPressed: () => setState(() => _isLogin = !_isLogin),
+                      child: Text(
+                        _isLogin ? "Sign Up" : 'Login',
+                        style: const TextStyle(color: Color(0xFF6C3BF5)),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _skipToDashboard,
+                      child: const Text(
+                        'Skip for now',
+                        style: TextStyle(color: Colors.white38),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

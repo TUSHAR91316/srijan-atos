@@ -2,8 +2,10 @@ package com.example.fake_call_detector
 
 import android.Manifest
 import android.app.role.RoleManager
+import android.content.Intent
 import android.provider.ContactsContract
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +21,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val methodChannelName = "com.example.fake_call_detector/methods"
     private val eventChannelName = "com.example.fake_call_detector/events"
+    private val REQUEST_ID_CALL_SCREENING = 1001
 
     private var audioCaptureService: AudioCaptureService? = null
     private var eventSink: EventChannel.EventSink? = null
@@ -50,23 +53,23 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun requestCallScreeningRole() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(RoleManager::class.java)
+            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
+                if (!roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+                    val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
+                    startActivityForResult(intent, REQUEST_ID_CALL_SCREENING)
+                }
+            }
+        }
+    }
+
     private fun canStartAudioCapture(): Boolean {
-        val hasMicPermission = ContextCompat.checkSelfPermission(
+        return ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasMicPermission) {
-            return false
-        }
-
-        val roleManager = getSystemService(RoleManager::class.java)
-        val holdsScreeningRole = roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
-        if (!holdsScreeningRole) {
-            return false
-        }
-
-        return true
     }
 
     private fun getTrustedNumbers(): List<String> {
@@ -137,7 +140,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "startAudioCapture" -> {
                     if (!canStartAudioCapture()) {
-                        result.success(false)
+                        result.error("PERMISSION_DENIED", "Microphone permission required", null)
                         return@setMethodCallHandler
                     }
 
@@ -154,6 +157,21 @@ class MainActivity : FlutterActivity() {
                 }
                 "getTrustedNumbers" -> {
                     result.success(getTrustedNumbers())
+                }
+                "requestScreeningRole" -> {
+                    requestCallScreeningRole()
+                    result.success(true)
+                }
+                "getLatestAudioSignals" -> {
+                    val audioSvc = audioCaptureService ?: return@setMethodCallHandler result.success(null)
+                    result.success(
+                        mapOf(
+                            "voiceSimilarity" to audioSvc.latestVoiceSimilarity,
+                            "antiSpoofScore" to audioSvc.latestAntiSpoofScore,
+                            "snrDb" to audioSvc.latestSnrDb,
+                            "voiceUsable" to audioSvc.latestVoiceUsable
+                        )
+                    )
                 }
                 else -> result.notImplemented()
             }

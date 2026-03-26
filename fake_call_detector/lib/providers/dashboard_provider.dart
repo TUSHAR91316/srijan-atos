@@ -1,10 +1,8 @@
 import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../models/call_event.dart';
-import '../services/detection_service.dart';
 import '../services/native_bridge.dart';
+import '../services/detection_service.dart';
 
 enum ThreatLevel { safe, warning, danger }
 
@@ -54,17 +52,22 @@ class DashboardState {
 
 class DashboardController extends StateNotifier<DashboardState> {
   DashboardController() : super(const DashboardState()) {
-    _loadTrustedNumbers();
-    _listenToCallEvents();
+    _init();
   }
 
-  DetectionService _detectionService = DetectionService(trustedNumbers: const <String>[]);
   StreamSubscription<CallEvent>? _callEventSubscription;
+  DetectionService? _detectionService;
+  Timer? _pollingTimer;
+
+  Future<void> _init() async {
+    await _loadTrustedNumbers();
+    _listenToCallEvents();
+  }
 
   Future<void> _loadTrustedNumbers() async {
     final trustedNumbers = await NativeBridge.getTrustedNumbers();
     _detectionService = DetectionService(trustedNumbers: trustedNumbers);
-
+    
     state = state.copyWith(
       trustedContactCount: trustedNumbers.length,
       latestReason: trustedNumbers.isEmpty
@@ -80,11 +83,13 @@ class DashboardController extends StateNotifier<DashboardState> {
   void _listenToCallEvents() {
     _callEventSubscription = NativeBridge.callEventsStream.listen(
       (event) async {
-        final risk = await _detectionService.analyzeIncomingCall(event);
-
+        if (_detectionService == null) return;
+        
+        final risk = await _detectionService!.analyzeIncomingCall(event);
+        
         state = state.copyWith(
           callerNumber: event.phoneNumber,
-          latestEvent: 'Incoming call detected (${event.eventName})',
+          latestEvent: 'Incoming call detected (\${event.eventName})',
           latestReason: risk.reasons.first,
           latestReasons: risk.reasons,
           riskProbability: risk.probability,
@@ -95,7 +100,7 @@ class DashboardController extends StateNotifier<DashboardState> {
       },
       onError: (dynamic error) {
         state = state.copyWith(
-          latestEvent: 'Monitoring error: $error',
+          latestEvent: 'Monitoring error: \$error',
           threatLevel: ThreatLevel.safe,
         );
       },
@@ -111,18 +116,57 @@ class DashboardController extends StateNotifier<DashboardState> {
       state = state.copyWith(
         isAudioCapturing: false,
         latestReason: start
-            ? 'Audio capture unavailable (permission denied or device restriction)'
+            ? 'Audio capture unavailable'
             : state.latestReason,
       );
       return;
     }
 
-    if (!start) {
-      state = const DashboardState();
-      return;
-    }
+    state = state.copyWith(isAudioCapturing: start);
 
-    state = state.copyWith(isAudioCapturing: true);
+    if (start) {
+      _startPolling();
+    } else {
+      _pollingTimer?.cancel();
+      _pollingTimer = null;
+    }
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!state.isAudioCapturing || _detectionService == null) {
+        timer.cancel();
+        return;
+      }
+      
+      final signals = await NativeBridge.getLatestAudioSignals();
+      if (signals == null) return;
+
+      final event = CallEvent(
+        eventName: "audio_analysis_update",
+        phoneNumber: state.callerNumber.isEmpty ? "Unknown" : state.callerNumber,
+        timestamp: DateTime.now(),
+        antiSpoofScore: signals['antiSpoofScore'],
+        snrDb: signals['snrDb'],
+        voiceSimilarity: signals['voiceSimilarity'],
+        voiceUsable: signals['voiceUsable'] == 1.0,
+      );
+
+      final risk = state.callerNumber.isEmpty 
+          ? _detectionService!.analyzeAudioOnly(event) 
+          : await _detectionService!.analyzeIncomingCall(event, saveLog: false);
+      
+      if (state.isAudioCapturing) {
+        state = state.copyWith(
+          latestEvent: 'Live Audio Analysis',
+          latestReason: risk.reasons.first,
+          latestReasons: risk.reasons,
+          riskProbability: risk.probability,
+          threatLevel: _scoreToThreatLevel(risk.score),
+        );
+      }
+    });
   }
 
   ThreatLevel _scoreToThreatLevel(int score) {
@@ -134,6 +178,7 @@ class DashboardController extends StateNotifier<DashboardState> {
   @override
   void dispose() {
     _callEventSubscription?.cancel();
+    _pollingTimer?.cancel();
     super.dispose();
   }
 }

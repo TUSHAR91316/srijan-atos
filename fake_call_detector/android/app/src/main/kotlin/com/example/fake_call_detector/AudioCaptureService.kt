@@ -66,8 +66,9 @@ class AudioCaptureService(private val context: Context) {
         audioManager.mode = AudioManager.MODE_IN_CALL
 
         try {
+            // Use VOICE_COMMUNICATION source for better call recording performance
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,

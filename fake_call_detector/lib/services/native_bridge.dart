@@ -73,4 +73,22 @@ class NativeBridge {
       return null;
     }
   }
+
+  static Future<Map<String, double>?> getLatestAudioSignals() async {
+    try {
+      final dynamic result = await _methodChannel.invokeMethod('getLatestAudioSignals');
+      if (result is Map) {
+        return result.map((key, value) => MapEntry(
+            key.toString(),
+            value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0.0,
+        ));
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('getLatestAudioSignals error: $e');
+      }
+      return null;
+    }
+  }
 }
