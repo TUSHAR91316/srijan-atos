@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 
@@ -9,7 +10,7 @@ void main() {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  runApp(const FakeCallDetectorApp());
+  runApp(const ProviderScope(child: FakeCallDetectorApp()));
 }
 
 class FakeCallDetectorApp extends StatelessWidget {

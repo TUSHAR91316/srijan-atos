@@ -83,6 +83,25 @@ fake_call_detector/build/app/outputs/flutter-apk/app-release.apk
 3. Set the app as the **Default Caller ID & Spam** app.
 4. Call the device from another phone — the dashboard will detect the call and engage the audio analysis workaround automatically.
 
+## 📊 VoxCeleb1 Evaluation Pipeline
+
+The repository now includes a reproducible evaluation toolkit in `tools/voxceleb_eval/` for:
+
+- VoxCeleb1 trial-pair verification scoring
+- FAR/FRR/EER threshold sweeps
+- impostor vs enrollment simulation
+- plot and CSV artifact generation
+- export of calibrated constants to `lib/services/biometric_calibration.dart`
+
+Usage:
+
+```bash
+python tools/voxceleb_eval/prepare_voxceleb1_metadata.py
+python tools/voxceleb_eval/run_evaluation.py --dataset-root <path-to-voxceleb1-audio>
+```
+
+Detailed instructions are in `tools/voxceleb_eval/README.md`.
+
 ---
 
 ## 📄 License

@@ -40,7 +40,7 @@ class AppTheme {
           ),
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),

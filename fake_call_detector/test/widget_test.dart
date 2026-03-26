@@ -1,7 +1,9 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fake_call_detector/main.dart';
+import 'package:fake_call_detector/screens/dashboard.dart';
 
 void main() {
   const MethodChannel methodChannel = MethodChannel(
@@ -18,6 +20,7 @@ void main() {
         .setMockMethodCallHandler(methodChannel, (MethodCall call) async {
           if (call.method == 'startAudioCapture') return true;
           if (call.method == 'stopAudioCapture') return true;
+          if (call.method == 'getTrustedNumbers') return <String>[];
           return null;
         });
 
@@ -36,18 +39,31 @@ void main() {
   });
 
   testWidgets('shows initial monitoring state', (WidgetTester tester) async {
-    await tester.pumpWidget(const FakeCallDetectorApp());
+    await tester.binding.setSurfaceSize(const Size(1080, 1920));
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: DashboardScreen()),
+      ),
+    );
+    await tester.pump();
 
     expect(find.text('Fake Call Detector'), findsOneWidget);
-    expect(find.text('PROTECTED'), findsOneWidget);
+    expect(find.text('SAFE'), findsOneWidget);
     expect(find.text('Monitoring for incoming calls…'), findsOneWidget);
     expect(find.text('Start Manual Capture'), findsOneWidget);
+    await tester.binding.setSurfaceSize(null);
   });
 
   testWidgets('manual capture button toggles active and idle states', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const FakeCallDetectorApp());
+    await tester.binding.setSurfaceSize(const Size(1080, 1920));
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: DashboardScreen()),
+      ),
+    );
+    await tester.pump();
 
     await tester.tap(find.text('Start Manual Capture'));
     await tester.pump(const Duration(milliseconds: 300));
@@ -60,5 +76,6 @@ void main() {
 
     expect(find.text('Start Manual Capture'), findsOneWidget);
     expect(find.text('Audio Analysis Idle'), findsOneWidget);
+    await tester.binding.setSurfaceSize(null);
   });
 }

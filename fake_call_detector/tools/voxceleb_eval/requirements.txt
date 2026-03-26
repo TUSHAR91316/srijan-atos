@@ -1,0 +1,9 @@
+ai-edge-litert
+numpy
+scipy
+soundfile
+librosa
+matplotlib
+pandas
+scikit-learn
+tqdm

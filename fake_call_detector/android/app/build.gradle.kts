@@ -63,6 +63,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
             signingConfig = signingConfigs.getByName("release")
         }
     }
@@ -82,4 +83,9 @@ tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.co
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
 }
