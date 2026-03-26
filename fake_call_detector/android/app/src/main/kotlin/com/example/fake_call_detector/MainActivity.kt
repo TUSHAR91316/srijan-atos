@@ -119,7 +119,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        
         instance = this
         audioCaptureService = AudioCaptureService(this)
     }
