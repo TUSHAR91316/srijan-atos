@@ -24,7 +24,9 @@ class NativeBridge {
           await _methodChannel.invokeMethod<bool>('startAudioCapture') ?? false;
       return result;
     } catch (e) {
-      debugPrint('startAudioCapture error: $e');
+      if (kDebugMode) {
+        debugPrint('startAudioCapture error: $e');
+      }
       return false;
     }
   }
@@ -35,7 +37,9 @@ class NativeBridge {
           await _methodChannel.invokeMethod<bool>('stopAudioCapture') ?? false;
       return result;
     } catch (e) {
-      debugPrint('stopAudioCapture error: $e');
+      if (kDebugMode) {
+        debugPrint('stopAudioCapture error: $e');
+      }
       return false;
     }
   }
@@ -47,8 +51,26 @@ class NativeBridge {
       if (result == null) return const <String>[];
       return result.map((e) => e.toString()).toList(growable: false);
     } catch (e) {
-      debugPrint('getTrustedNumbers error: $e');
+      if (kDebugMode) {
+        debugPrint('getTrustedNumbers error: $e');
+      }
       return const <String>[];
+    }
+  }
+
+  static Future<List<double>?> getLatestVoiceEmbedding() async {
+    try {
+      final List<dynamic>? result = await _methodChannel
+          .invokeMethod<List<dynamic>>('getLatestVoiceEmbedding');
+      if (result == null || result.isEmpty) return null;
+      return result
+          .map((e) => e is num ? e.toDouble() : double.tryParse(e.toString()) ?? 0.0)
+          .toList(growable: false);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('getLatestVoiceEmbedding error: $e');
+      }
+      return null;
     }
   }
 }

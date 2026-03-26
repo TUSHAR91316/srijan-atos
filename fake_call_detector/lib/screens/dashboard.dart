@@ -1,28 +1,18 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import '../models/call_event.dart';
-import '../services/native_bridge.dart';
-import '../services/threat_scoring_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum ThreatLevel { safe, warning, danger }
+import '../providers/dashboard_provider.dart';
+import 'history_screen.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with SingleTickerProviderStateMixin {
-  String _latestEvent = 'Monitoring for incoming calls…';
-  String _callerNumber = '';
-  String _latestReason = '';
-  int _trustedContactCount = 0;
-  bool _isAudioCapturing = false;
-  ThreatLevel _threatLevel = ThreatLevel.safe;
-  ThreatScoringService _threatScoringService = const ThreatScoringService();
-  StreamSubscription<CallEvent>? _callEventSubscription;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -44,94 +34,29 @@ class _DashboardScreenState extends State<DashboardScreen>
     _pulseAnimation = Tween<double>(begin: 0.9, end: 1.05).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    _loadTrustedNumbers();
-    _listenToCallEvents();
-  }
-
-  Future<void> _loadTrustedNumbers() async {
-    final trustedNumbers = await NativeBridge.getTrustedNumbers();
-    if (!mounted) return;
-
-    setState(() {
-      _trustedContactCount = trustedNumbers.length;
-      _threatScoringService = ThreatScoringService(
-        trustedNumbers: trustedNumbers,
-      );
-      if (trustedNumbers.isEmpty) {
-        _latestReason = 'Grant Contacts permission to improve spoof detection.';
-      }
-    });
   }
 
   @override
   void dispose() {
-    _callEventSubscription?.cancel(); // ← fix stream subscription leak
     _pulseController.dispose();
     super.dispose();
   }
 
-  void _listenToCallEvents() {
-    _callEventSubscription = NativeBridge.callEventsStream.listen(
-      (event) {
-        final risk = _threatScoringService.scoreIncomingCall(event);
-        if (!mounted) return;
-        setState(() {
-          _callerNumber = event.phoneNumber;
-          _latestEvent = 'Incoming call detected (${event.eventName})';
-          _latestReason = risk.reasons.first;
-          _threatLevel = _scoreToThreatLevel(risk.score);
-        });
-        _toggleAudioCapture(true);
-      },
-      onError: (dynamic error) {
-        if (!mounted) return;
-        setState(() {
-          _latestEvent = 'Monitoring error: $error';
-          _threatLevel = ThreatLevel.safe;
-        });
-      },
-    );
-  }
-
-  Future<void> _toggleAudioCapture(bool start) async {
-    final success = start
-        ? await NativeBridge.startAudioCapture()
-        : await NativeBridge.stopAudioCapture();
-    if (!mounted) return;
-    if (success) {
-      setState(() {
-        _isAudioCapturing = start;
-        if (!start) {
-          _threatLevel = ThreatLevel.safe;
-          _callerNumber = '';
-          _latestReason = '';
-          _latestEvent = 'Monitoring for incoming calls…';
-        }
-      });
-    }
-  }
-
-  ThreatLevel _scoreToThreatLevel(int score) {
-    if (score >= 60) return ThreatLevel.danger;
-    if (score >= 30) return ThreatLevel.warning;
-    return ThreatLevel.safe;
-  }
-
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  Color get _threatColor => switch (_threatLevel) {
+  Color _threatColor(ThreatLevel threatLevel) => switch (threatLevel) {
     ThreatLevel.safe => _safeGreen,
     ThreatLevel.warning => _warnAmber,
     ThreatLevel.danger => _dangerRed,
   };
 
-  String get _threatLabel => switch (_threatLevel) {
-    ThreatLevel.safe => 'PROTECTED',
-    ThreatLevel.warning => 'ANALYSING…',
-    ThreatLevel.danger => 'THREAT DETECTED',
+  String _threatLabel(ThreatLevel threatLevel) => switch (threatLevel) {
+    ThreatLevel.safe => 'SAFE',
+    ThreatLevel.warning => 'SUSPICIOUS',
+    ThreatLevel.danger => 'HIGH RISK',
   };
 
-  IconData get _threatIcon => switch (_threatLevel) {
+  IconData _threatIcon(ThreatLevel threatLevel) => switch (threatLevel) {
     ThreatLevel.safe => Icons.verified_user_rounded,
     ThreatLevel.warning => Icons.policy_rounded,
     ThreatLevel.danger => Icons.gpp_bad_rounded,
@@ -141,6 +66,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(dashboardProvider);
+    final controller = ref.read(dashboardProvider.notifier);
+    final threatColor = _threatColor(state.threatLevel);
+
     return Scaffold(
       backgroundColor: _bgColor,
       appBar: AppBar(
@@ -152,50 +81,61 @@ class _DashboardScreenState extends State<DashboardScreen>
             const Text('Fake Call Detector'),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'History',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HistoryScreen()),
+              );
+            },
+            icon: const Icon(Icons.timeline_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildThreatCard(),
-              const SizedBox(height: 20),
-              if (_callerNumber.isNotEmpty) _buildCallerCard(),
-              if (_callerNumber.isNotEmpty) const SizedBox(height: 20),
-              _buildAudioStatusCard(),
-              const SizedBox(height: 12),
-              _buildTrustedContactsCard(),
-              const Spacer(),
-              _buildCaptureButton(),
-              const SizedBox(height: 8),
-              const Center(
-                child: Text(
-                  'All analysis is performed on-device. No data leaves your phone.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: Colors.white38),
-                ),
+          children: [
+            _buildThreatCard(state, threatColor),
+            const SizedBox(height: 12),
+            _buildRiskMeterCard(state, threatColor),
+            const SizedBox(height: 20),
+            if (state.callerNumber.isNotEmpty) _buildCallerCard(state.callerNumber),
+            if (state.callerNumber.isNotEmpty) const SizedBox(height: 20),
+            _buildAudioStatusCard(state.isAudioCapturing),
+            const SizedBox(height: 12),
+            _buildTrustedContactsCard(state.trustedContactCount, controller),
+            const SizedBox(height: 16),
+            _buildCaptureButton(state.isAudioCapturing, controller),
+            const SizedBox(height: 8),
+            const Center(
+              child: Text(
+                'All analysis is performed on-device. No data leaves your phone.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: Colors.white38),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildThreatCard() {
+  Widget _buildThreatCard(DashboardState state, Color threatColor) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: _threatColor.withValues(alpha: 0.35),
+          color: threatColor.withValues(alpha: 0.35),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: _threatColor.withValues(alpha: 0.15),
+            color: threatColor.withValues(alpha: 0.15),
             blurRadius: 24,
             spreadRadius: 2,
           ),
@@ -207,23 +147,23 @@ class _DashboardScreenState extends State<DashboardScreen>
             scale: _pulseAnimation,
             child: CircleAvatar(
               radius: 42,
-              backgroundColor: _threatColor.withValues(alpha: 0.12),
-              child: Icon(_threatIcon, color: _threatColor, size: 44),
+              backgroundColor: threatColor.withValues(alpha: 0.12),
+              child: Icon(_threatIcon(state.threatLevel), color: threatColor, size: 44),
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            _threatLabel,
+            _threatLabel(state.threatLevel),
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w900,
-              color: _threatColor,
+              color: threatColor,
               letterSpacing: 1.4,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            _latestEvent,
+            state.latestEvent,
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
@@ -231,10 +171,10 @@ class _DashboardScreenState extends State<DashboardScreen>
               height: 1.4,
             ),
           ),
-          if (_latestReason.isNotEmpty) ...[
+          if (state.latestReason.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              _latestReason,
+              state.latestReason,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 12, color: Colors.white38),
             ),
@@ -244,7 +184,54 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildCallerCard() {
+  Widget _buildRiskMeterCard(DashboardState state, Color threatColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: threatColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.speed_rounded, color: Colors.white70, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Real-time Risk ${(100 * state.riskProbability).toStringAsFixed(1)}%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: LinearProgressIndicator(
+              minHeight: 10,
+              value: state.riskProbability,
+              backgroundColor: Colors.white12,
+              color: threatColor,
+            ),
+          ),
+          if (state.latestReasons.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Why flagged: ${state.latestReasons.take(2).join(' • ')}',
+              style: const TextStyle(color: Colors.white60, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallerCard(String callerNumber) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -267,7 +254,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 style: TextStyle(fontSize: 12, color: Colors.white38),
               ),
               Text(
-                _callerNumber,
+                callerNumber,
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -281,7 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildAudioStatusCard() {
+  Widget _buildAudioStatusCard(bool isAudioCapturing) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.all(16),
@@ -289,7 +276,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: _isAudioCapturing
+          color: isAudioCapturing
               ? _dangerRed.withValues(alpha: 0.4)
               : Colors.white12,
         ),
@@ -297,8 +284,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Row(
         children: [
           Icon(
-            _isAudioCapturing ? Icons.mic_rounded : Icons.mic_off_rounded,
-            color: _isAudioCapturing ? _dangerRed : Colors.white38,
+            isAudioCapturing ? Icons.mic_rounded : Icons.mic_off_rounded,
+            color: isAudioCapturing ? _dangerRed : Colors.white38,
             size: 28,
           ),
           const SizedBox(width: 14),
@@ -307,18 +294,18 @@ class _DashboardScreenState extends State<DashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isAudioCapturing
+                  isAudioCapturing
                       ? 'Audio Analysis Active'
                       : 'Audio Analysis Idle',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: _isAudioCapturing ? _dangerRed : Colors.white54,
+                    color: isAudioCapturing ? _dangerRed : Colors.white54,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _isAudioCapturing
+                  isAudioCapturing
                       ? 'Speakerphone workaround engaged'
                       : 'Waiting for incoming call',
                   style: const TextStyle(fontSize: 12, color: Colors.white38),
@@ -331,8 +318,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             height: 10,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _isAudioCapturing ? _dangerRed : Colors.white24,
-              boxShadow: _isAudioCapturing
+              color: isAudioCapturing ? _dangerRed : Colors.white24,
+              boxShadow: isAudioCapturing
                   ? [
                       BoxShadow(
                         color: _dangerRed.withValues(alpha: 0.6),
@@ -347,7 +334,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildTrustedContactsCard() {
+  Widget _buildTrustedContactsCard(
+    int trustedContactCount,
+    DashboardController controller,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -361,14 +351,14 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              _trustedContactCount > 0
-                  ? 'Trusted contacts loaded: $_trustedContactCount'
+              trustedContactCount > 0
+                  ? 'Trusted contacts loaded: $trustedContactCount'
                   : 'No trusted contacts loaded',
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
           ),
           TextButton(
-            onPressed: _loadTrustedNumbers,
+            onPressed: controller.refreshTrustedNumbers,
             child: const Text('Refresh'),
           ),
         ],
@@ -376,19 +366,22 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildCaptureButton() {
+  Widget _buildCaptureButton(
+    bool isAudioCapturing,
+    DashboardController controller,
+  ) {
     return ElevatedButton.icon(
-      onPressed: () => _toggleAudioCapture(!_isAudioCapturing),
+      onPressed: () => controller.toggleAudioCapture(!isAudioCapturing),
       icon: Icon(
-        _isAudioCapturing
+        isAudioCapturing
             ? Icons.stop_circle_rounded
             : Icons.play_circle_rounded,
       ),
       label: Text(
-        _isAudioCapturing ? 'Stop Manual Capture' : 'Start Manual Capture',
+        isAudioCapturing ? 'Stop Manual Capture' : 'Start Manual Capture',
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: _isAudioCapturing ? _dangerRed : _accentPurple,
+        backgroundColor: isAudioCapturing ? _dangerRed : _accentPurple,
         foregroundColor: Colors.white,
       ),
     );

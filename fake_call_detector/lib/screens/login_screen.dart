@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import '../services/database_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/service_providers.dart';
+import '../services/input_validation_service.dart';
 import 'dashboard.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _dbService = DatabaseService();
   bool _isLogin = true;
   bool _isLoading = false;
 
@@ -20,9 +22,25 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
+    final emailError = InputValidationService.validateEmail(email);
+    if (emailError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields')),
+        SnackBar(content: Text(emailError)),
+      );
+      return;
+    }
+
+    if (!_isLogin) {
+      final passwordError = InputValidationService.validatePassword(password);
+      if (passwordError != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(passwordError)),
+        );
+        return;
+      }
+    } else if (password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password is required')),
       );
       return;
     }
@@ -30,9 +48,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final authRepository = ref.read(authRepositoryProvider);
       if (_isLogin) {
-        final user = await _dbService.getUser(email);
-        if (user != null && user['password'] == password) {
+        final result = await authRepository.login(email, password);
+        if (result.success) {
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
@@ -41,21 +60,20 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid email or password')),
+            SnackBar(content: Text(result.message)),
           );
         }
       } else {
-        final existingUser = await _dbService.getUser(email);
-        if (existingUser != null) {
+        final result = await authRepository.register(email, password);
+        if (!result.success) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('User already exists')),
+            SnackBar(content: Text(result.message)),
           );
         } else {
-          await _dbService.registerUser(email, password);
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Registration successful! Please login.')),
+            const SnackBar(content: Text('Registration successful. Please login.')),
           );
           setState(() => _isLogin = true);
         }
