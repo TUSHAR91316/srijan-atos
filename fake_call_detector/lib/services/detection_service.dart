@@ -144,8 +144,12 @@ class DetectionService {
       'snr_penalty': snrPenalty,
     };
 
-    // Base z = -6.0. Impossible to reach > 20% risk without deliberate effort.
-    final z = -6.0 + 1.0 * signals['anti_spoof']! + 1.0 * signals['snr_penalty']!;
+    // We use a non-linear threshold for the demo. 
+    // This keeps normal voice safely bounded, but allows obvious fakes (anti_spoof > 0.7) to jump past 80% risk.
+    double spoofPenalty = signals['anti_spoof']! > 0.70 ? 6.5 : (signals['anti_spoof']! * 1.5);
+    double noisePenalty = signals['snr_penalty']! > 0.60 ? 3.0 : (signals['snr_penalty']! * 1.0);
+
+    final z = -4.0 + spoofPenalty + noisePenalty;
     final probability = 1.0 / (1.0 + exp(-z));
     final score = (probability * 100).round().clamp(0, 100);
 
@@ -168,21 +172,21 @@ class DetectionService {
   }
 
   double _predictProbability(Map<String, double> s) {
-    // Significantly lowered all risk weights so normal live tests NEVER spike
+    // Rebalanced so an unknown caller with fake audio crosses the threshold nicely
     final z =
-        -5.0 +
-        0.8 * s['unknown']! +
-        0.2 * s['international']! +
-        0.5 * s['malformed']! +
-        0.5 * s['near_spoof']! +
+        -3.5 +
+        1.5 * s['unknown']! +
+        0.5 * s['international']! +
+        1.0 * s['malformed']! +
+        1.0 * s['near_spoof']! +
         0.5 * s['frequency_anomaly']! +
         0.2 * s['time_of_day_anomaly']! +
         0.2 * s['duration_anomaly']! +
-        0.2 * s['first_time_caller']! +
-        1.0 * s['voice_mismatch']! +
-        1.0 * s['anti_spoof']! +
-        0.5 * s['snr_penalty']! +
-        0.1 * s['voice_unavailable']! -
+        0.5 * s['first_time_caller']! +
+        2.0 * s['voice_mismatch']! +
+        (s['anti_spoof']! > 0.70 ? 4.0 : 0.5) +  // Huge spike if fake audio is explicitly detected
+        1.0 * s['snr_penalty']! +
+        0.5 * s['voice_unavailable']! -
         3.0 * s['contact_confidence']!;
 
     return 1.0 / (1.0 + exp(-z));
